@@ -5,7 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 from xgboost import XGBClassifier
 
-from typing import List
+from typing import List, Dict
 
 
 def soil_type_2_elu(soil_type: int) -> int:
@@ -102,14 +102,18 @@ def preprocess(df: pd.DataFrame) -> List[np.ndarray]:
 
 
 class MXGBClassifier(object):
-    def __init__(self, weight: float = 0.5):
+    def __init__(self, weight: float = 0.5, params: Dict[str, float] = {}):
         """
+        The classifier is expecting X of shape (n,d+2), containing columns of ID and of area.
         param weight: the weight of the general model, expecting a float between 0 and 1.
         """
         assert 0 <= weight <= 1, "weight out of boundary [0,1]."
         self.weight = weight
-        self.general_model = XGBClassifier(eval_metric="mlogloss")
-        self.area_models = [XGBClassifier(eval_metric="mlogloss") for i in range(4)]
+        self.general_model = XGBClassifier(n_jobs=-1)
+        self.general_model.set_params(**params)
+        self.area_models = [XGBClassifier(n_jobs=-1) for i in range(4)]
+        for area_model in self.area_models:
+            area_model.set_params(**params)
 
     def fit(self, X: np.ndarray, y: np.ndarray):
         self.general_model.fit(X[:, 2:], y)
@@ -135,7 +139,14 @@ if __name__ == "__main__":
     X, y = preprocess(df_train)
     X_train, X_val, y_train, y_val = train_test_split(X, y)
 
-    classifier = MXGBClassifier()
+    default_params = {
+        "n_estimators": 100,
+        "max_depth": 10,
+        "learning_rate": 0.1,
+        "gamma": 0,
+    }
+
+    classifier = MXGBClassifier(0.5, default_params)
     classifier.fit(X_train, y_train)
 
     y_train_pred = classifier.predict(X_train)
