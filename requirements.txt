@@ -159,3 +159,8 @@ yaml=0.2.5=h7b6447c_0
 zeromq=4.3.4=h2531618_0
 zlib=1.2.12=h5eee18b_3
 zstd=1.5.0=ha95c52a_0
+
+numpy~=1.21.5
+pandas~=1.4.4
+scikit-learn~=1.1.1
+xgboost~=1.5.0
