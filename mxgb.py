@@ -48,7 +48,7 @@ def preprocess(df: pd.DataFrame) -> List[np.ndarray]:
     """
     Preprocess the dataframe and return [X, y] without reshuffling nor rescaling.
     X is of shape (n,d+2) and y is of shape (n).
-    The first column of X contains the Id of each record,
+    The first column of X contains the ID of each record,
     whilst the second column contains the area code of each record.
     """
 
@@ -59,13 +59,13 @@ def preprocess(df: pd.DataFrame) -> List[np.ndarray]:
         df.loc[df[column_name] == 1, "Soil_Type"] = i
         df.drop(column_name, axis=1, inplace=True)
 
-    df.insert(loc=0, column="elu", value=[soil_type_2_elu(i) for i in df["Soil_Type"]])
+    df["elu"] = [soil_type_2_elu(i) for i in df["Soil_Type"]]
     df.drop("Soil_Type", axis=1, inplace=True)
 
-    df.insert(loc=0, column="climatic_zone", value=[get_climatic_zone(i) for i in df["elu"]])
-    df.insert(loc=1, column="geologic_zone", value=[get_geologic_zone(i) for i in df["elu"]])
-    df.insert(loc=2, column="third_digit", value=[get_third_digit(i) for i in df["elu"]])
-    df.insert(loc=3, column="fourth_digit", value=[get_fourth_digit(i) for i in df["elu"]])
+    df["climatic_zone"] = [get_climatic_zone(i) for i in df["elu"]]
+    df["geologic_zone"] = [get_geologic_zone(i) for i in df["elu"]]
+    df["third_digit"] = [get_third_digit(i) for i in df["elu"]]
+    df["fourth_digit"] = [get_fourth_digit(i) for i in df["elu"]]
     df.drop("elu", axis=1, inplace=True)
 
     # wilderness area
@@ -89,9 +89,14 @@ def preprocess(df: pd.DataFrame) -> List[np.ndarray]:
 
     # one hot encode
     enc = OneHotEncoder(categories=[np.arange(1, 9), np.arange(1, 9), np.arange(0, 10), np.arange(0, 10)])
-    enc.fit(X[:, :4])
+    enc.fit(X[:, -4:])
 
-    X = np.concatenate((ids.reshape(-1, 1), areas.reshape(-1, 1), enc.transform(X[:, :4]).toarray(), X[:, 4:]), axis=1)
+    X = np.concatenate((
+        ids.reshape(-1, 1),
+        areas.reshape(-1, 1),
+        X[:, :-4],
+        enc.transform(X[:, -4:]).toarray()
+    ), axis=1)
 
     return [X, y]
 
