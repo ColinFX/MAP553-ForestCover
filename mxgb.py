@@ -1,11 +1,13 @@
+import csv
 import json
 import warnings
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, ParameterGrid
 from sklearn.preprocessing import OneHotEncoder
+from tqdm import tqdm
 from xgboost import XGBClassifier
 
 from typing import List, Dict
@@ -108,13 +110,13 @@ def preprocess(df: pd.DataFrame) -> List[np.ndarray]:
 
 
 class MXGBClassifier(object):
-    def __init__(self, weight: float = 0.5, params: Dict[str, float] = {}):
+    def __init__(self, params: Dict[str, float]):
         """
         The classifier is expecting X of shape (n,d+2), containing columns of ID and of area.
         param weight: the weight of the general model, expecting a float between 0 and 1.
         """
-        assert 0 <= weight <= 1, "weight out of boundary [0,1]."
-        self.weight = weight
+        self.weight = params["weight"]
+        assert 0 <= self.weight <= 1, "weight out of boundary [0,1]."
         self.general_model = XGBClassifier(n_jobs=-1, verbosity=0)
         self.general_model.set_params(**params)
         self.area_models = [XGBClassifier(n_jobs=-1, verbosity=0) for i in range(4)]
@@ -144,38 +146,50 @@ if __name__ == "__main__":
     df_train = pd.read_csv("./data/train.csv")
     X, y = preprocess(df_train)
 
-    params = {
-        "n_estimators": 100,
-        "max_depth": 10,
-        "learning_rate": 0.1,
-        "gamma": 0,
+    params_list = {
+        "weight": [0.2, 0.5, 0.8],
+        "n_estimators": [100, 60, 30, 12, 5],
+        "max_depth": [10, 7, 4, 2],
+        "learning_rate": [1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5],
+        "gamma": [0],
     }
 
-    kf = KFold(n_splits=5, shuffle=True)
+    with open("mxgb_result.csv", "w") as file:
+        writer = csv.DictWriter(file, fieldnames=list(params_list.keys())+["train_acc", "val_acc"])
+        writer.writeheader()
 
-    train_accuracy = []
-    val_accuracy = []
+        best_val_acc = -1
+        best_params = None
 
-    for i, (train_index, val_index) in enumerate(kf.split(X)):
-        print("- KFold " + str(i+1) + "/5")
-        X_train = X[train_index]
-        X_val = X[val_index]
-        y_train = y[train_index]
-        y_val = y[val_index]
+        for params in tqdm(ParameterGrid(params_list)):
+            kf = KFold(n_splits=5, shuffle=True)
+            train_accuracy = []
+            val_accuracy = []
 
-        classifier = MXGBClassifier(0.5, params)
-        classifier.fit(X_train, y_train)
-        y_train_pred = classifier.predict(X_train)
-        train_accuracy.append(accuracy_score(y_train, y_train_pred))
-        y_val_pred = classifier.predict(X_val)
-        val_accuracy.append(accuracy_score(y_val, y_val_pred))
+            for i, (train_index, val_index) in enumerate(kf.split(X)):
+                # print("- KFold " + str(i+1) + "/5")
+                X_train = X[train_index]
+                X_val = X[val_index]
+                y_train = y[train_index]
+                y_val = y[val_index]
 
-    result = params.copy()
-    result["train_acc"] = np.mean(train_accuracy)
-    result["val_acc"] = np.mean(val_accuracy)
+                classifier = MXGBClassifier(params)
+                classifier.fit(X_train, y_train)
+                y_train_pred = classifier.predict(X_train)
+                train_accuracy.append(accuracy_score(y_train, y_train_pred))
+                y_val_pred = classifier.predict(X_val)
+                val_accuracy.append(accuracy_score(y_val, y_val_pred))
 
-    print("- train accuracy = " + str(result["train_acc"]))
-    print("- vali. accuracy = " + str(result["val_acc"]))
+            result = params.copy()
+            result["train_acc"] = np.mean(train_accuracy)
+            result["val_acc"] = np.mean(val_accuracy)
 
-    with open("mxgb_result.json", "a") as file:
-        file.write(json.dumps(result, indent=4))
+            if best_val_acc < result["val_acc"]:
+                best_val_acc = result["val_acc"]
+                best_params = params
+
+            # print("- train accuracy = " + str(result["train_acc"]))
+            # print("- vali. accuracy = " + str(result["val_acc"]))
+            writer.writerow(result)
+
+        print("best val. accuracy = " + best_val_acc + "\nunder " + str(best_params))
