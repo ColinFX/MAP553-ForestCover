@@ -1,11 +1,17 @@
+import json
+import warnings
+
 import numpy as np
 import pandas as pd
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import KFold
 from sklearn.preprocessing import OneHotEncoder
 from xgboost import XGBClassifier
 
 from typing import List, Dict
+
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 
 def soil_type_2_elu(soil_type: int) -> int:
@@ -109,9 +115,9 @@ class MXGBClassifier(object):
         """
         assert 0 <= weight <= 1, "weight out of boundary [0,1]."
         self.weight = weight
-        self.general_model = XGBClassifier(n_jobs=-1)
+        self.general_model = XGBClassifier(n_jobs=-1, verbosity=0)
         self.general_model.set_params(**params)
-        self.area_models = [XGBClassifier(n_jobs=-1) for i in range(4)]
+        self.area_models = [XGBClassifier(n_jobs=-1, verbosity=0) for i in range(4)]
         for area_model in self.area_models:
             area_model.set_params(**params)
 
@@ -137,22 +143,39 @@ class MXGBClassifier(object):
 if __name__ == "__main__":
     df_train = pd.read_csv("./data/train.csv")
     X, y = preprocess(df_train)
-    X_train, X_val, y_train, y_val = train_test_split(X, y)
 
-    default_params = {
+    params = {
         "n_estimators": 100,
         "max_depth": 10,
         "learning_rate": 0.1,
         "gamma": 0,
     }
 
-    classifier = MXGBClassifier(0.5, default_params)
-    classifier.fit(X_train, y_train)
+    kf = KFold(n_splits=5, shuffle=True)
 
-    y_train_pred = classifier.predict(X_train)
-    print("# TRAIN # \n\n", confusion_matrix(y_train, y_train_pred))
-    print("\n", classification_report(y_train, y_train_pred))
+    train_accuracy = []
+    val_accuracy = []
 
-    y_val_pred = classifier.predict(X_val)
-    print("# VALIDATION # \n\n", confusion_matrix(y_val, y_val_pred))
-    print("\n", classification_report(y_val, y_val_pred))
+    for i, (train_index, val_index) in enumerate(kf.split(X)):
+        print("- KFold " + str(i+1) + "/5")
+        X_train = X[train_index]
+        X_val = X[val_index]
+        y_train = y[train_index]
+        y_val = y[val_index]
+
+        classifier = MXGBClassifier(0.5, params)
+        classifier.fit(X_train, y_train)
+        y_train_pred = classifier.predict(X_train)
+        train_accuracy.append(accuracy_score(y_train, y_train_pred))
+        y_val_pred = classifier.predict(X_val)
+        val_accuracy.append(accuracy_score(y_val, y_val_pred))
+
+    result = params.copy()
+    result["train_acc"] = np.mean(train_accuracy)
+    result["val_acc"] = np.mean(val_accuracy)
+
+    print("- train accuracy = " + str(result["train_acc"]))
+    print("- vali. accuracy = " + str(result["val_acc"]))
+
+    with open("mxgb_result.json", "a") as file:
+        file.write(json.dumps(result, indent=4))
