@@ -28,4 +28,12 @@ params = {
     "learning_rate": 0.1,
     "gamma": 0.1,
 } -> 0.72826
+
+params = {
+    "weight": 1,
+    "n_estimators": 30,
+    "max_depth": 4,
+    "learning_rate": 1,
+    "gamma": 0,
+} -> 0.69184
 ```
