@@ -158,59 +158,59 @@ if __name__ == "__main__":
 
     # TUNING
 
-    params_list = {
-        "weight": [0, 1],
-        "n_estimators": [50],
-        "max_depth": [10],
-        "learning_rate": [0.1],
-        "gamma": [0.1],
-    }
-
-    with open("mxgb_result.csv", "a") as file:
-        writer = csv.DictWriter(file, fieldnames=list(params_list.keys())+["train_acc", "val_acc"])
-        # writer.writeheader()
-
-        for params in tqdm(ParameterGrid(params_list)):
-            kf = KFold(n_splits=5, shuffle=True)
-            train_accuracy = []
-            val_accuracy = []
-
-            for i, (train_index, val_index) in enumerate(kf.split(X)):
-                X_train = X[train_index]
-                X_val = X[val_index]
-                y_train = y[train_index]
-                y_val = y[val_index]
-
-                classifier = MXGBClassifier(params)
-                classifier.fit(X_train, y_train)
-                y_train_pred = classifier.predict(X_train)
-                train_accuracy.append(accuracy_score(y_train, y_train_pred))
-                y_val_pred = classifier.predict(X_val)
-                val_accuracy.append(accuracy_score(y_val, y_val_pred))
-
-            result = params.copy()
-            result["train_acc"] = np.mean(train_accuracy)
-            result["val_acc"] = np.mean(val_accuracy)
-
-            writer.writerow(result)
+    # params_list = {
+    #     "weight": [0, 1],
+    #     "n_estimators": [50],
+    #     "max_depth": [10],
+    #     "learning_rate": [0.1],
+    #     "gamma": [0.1],
+    # }
+    #
+    # with open("mxgb_result.csv", "a") as file:
+    #     writer = csv.DictWriter(file, fieldnames=list(params_list.keys())+["train_acc", "val_acc"])
+    #     # writer.writeheader()
+    #
+    #     for params in tqdm(ParameterGrid(params_list)):
+    #         kf = KFold(n_splits=5, shuffle=True)
+    #         train_accuracy = []
+    #         val_accuracy = []
+    #
+    #         for i, (train_index, val_index) in enumerate(kf.split(X)):
+    #             X_train = X[train_index]
+    #             X_val = X[val_index]
+    #             y_train = y[train_index]
+    #             y_val = y[val_index]
+    #
+    #             classifier = MXGBClassifier(params)
+    #             classifier.fit(X_train, y_train)
+    #             y_train_pred = classifier.predict(X_train)
+    #             train_accuracy.append(accuracy_score(y_train, y_train_pred))
+    #             y_val_pred = classifier.predict(X_val)
+    #             val_accuracy.append(accuracy_score(y_val, y_val_pred))
+    #
+    #         result = params.copy()
+    #         result["train_acc"] = np.mean(train_accuracy)
+    #         result["val_acc"] = np.mean(val_accuracy)
+    #
+    #         writer.writerow(result)
 
     # PREDICTING
 
-    # params = {
-    #     "weight": 1,
-    #     "n_estimators": 50,
-    #     "max_depth": 10,
-    #     "learning_rate": 0.1,
-    #     "gamma": 0.1,
-    # }
-    #
-    # classifier = MXGBClassifier(params)
-    # classifier.fit(X, y)
-    #
-    # df_test = pd.read_csv("./data/test-full.csv")
-    # X_test, _ = preprocess(df_test, mode="test")
-    # ids = [int(id) for id in X_test[:, 0]]
-    #
-    # y_test = classifier.predict(X_test)
-    # df_result = pd.DataFrame(list(zip(ids, y_test)), columns=['Id', 'Cover_Type'])
-    # df_result.to_csv("./data/mxgb_pred.csv", index=False)
+    params = {
+        "weight": 1,
+        "n_estimators": 30,
+        "max_depth": 4,
+        "learning_rate": 1,
+        "gamma": 0,
+    }
+
+    classifier = MXGBClassifier(params)
+    classifier.fit(X, y)
+
+    df_test = pd.read_csv("./data/test-full.csv")
+    X_test, _ = preprocess(df_test, mode="test")
+    ids = [int(id) for id in X_test[:, 0]]
+
+    y_test = classifier.predict(X_test)
+    df_result = pd.DataFrame(list(zip(ids, y_test)), columns=['Id', 'Cover_Type'])
+    df_result.to_csv("./data/mxgb_pred.csv", index=False)
