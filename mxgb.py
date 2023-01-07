@@ -1,3 +1,7 @@
+"""
+Implementation of Multi-XGBoost Classifier.
+"""
+
 import csv
 import json
 import warnings
@@ -52,12 +56,13 @@ def get_fourth_digit(elu: int) -> int:
     return elu % 10
 
 
-def preprocess(df: pd.DataFrame) -> List[np.ndarray]:
+def preprocess(df: pd.DataFrame, mode: str = "train") -> List[np.ndarray]:
     """
     Preprocess the dataframe and return [X, y] without reshuffling nor rescaling.
     X is of shape (n,d+2) and y is of shape (n).
     The first column of X contains the ID of each record,
     whilst the second column contains the area code of each record.
+    :param mode whether "train" or "test"
     """
 
     # soil types
@@ -87,8 +92,13 @@ def preprocess(df: pd.DataFrame) -> List[np.ndarray]:
     ids = df["Id"].to_numpy()
     df.drop("Id", axis=1, inplace=True)
 
-    y = df["Cover_Type"].to_numpy()
-    df.drop("Cover_Type", axis=1, inplace=True)
+    if mode == "train":
+        y = df["Cover_Type"].to_numpy()
+        df.drop("Cover_Type", axis=1, inplace=True)
+    elif mode == "test":
+        y = None
+    else:
+        raise AssertionError("Unexpected mode, try \"train\" or \"test\" instead. ")
 
     areas = df["Wilderness_Area"].to_numpy()
     df.drop("Wilderness_Area", axis=1, inplace=True)
@@ -119,7 +129,7 @@ class MXGBClassifier(object):
         assert 0 <= self.weight <= 1, "weight out of boundary [0,1]."
         self.general_model = XGBClassifier(n_jobs=-1, verbosity=0)
         self.general_model.set_params(**params)
-        self.area_models = [XGBClassifier(n_jobs=-1, verbosity=0) for i in range(4)]
+        self.area_models = [XGBClassifier(n_jobs=-1, verbosity=0) for _ in range(4)]
         for area_model in self.area_models:
             area_model.set_params(**params)
 
@@ -137,7 +147,7 @@ class MXGBClassifier(object):
         for i in range(4):
             classes = np.array([j + 1 in self.area_models[i].classes_ for j in range(7)])
             mask = (X[:, 1] == i + 1)
-            area_proba[mask][:, classes] = self.area_models[i].predict_proba(X[mask, 2:])
+            area_proba[mask][:, classes] += self.area_models[i].predict_proba(X[mask, 2:])
         final_proba = self.weight * general_proba + (1 - self.weight) * area_proba
         return (np.argmax(final_proba, axis=1) + 1).astype(int)
 
@@ -146,20 +156,19 @@ if __name__ == "__main__":
     df_train = pd.read_csv("./data/train.csv")
     X, y = preprocess(df_train)
 
+    # TUNING
+
     params_list = {
-        "weight": [0.2, 0.5, 0.8],
-        "n_estimators": [100, 60, 30, 12, 5],
-        "max_depth": [10, 7, 4, 2],
-        "learning_rate": [1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5],
-        "gamma": [0],
+        "weight": [0, 1],
+        "n_estimators": [50],
+        "max_depth": [10],
+        "learning_rate": [0.1],
+        "gamma": [0.1],
     }
 
-    with open("mxgb_result.csv", "w") as file:
+    with open("mxgb_result.csv", "a") as file:
         writer = csv.DictWriter(file, fieldnames=list(params_list.keys())+["train_acc", "val_acc"])
-        writer.writeheader()
-
-        best_val_acc = -1
-        best_params = None
+        # writer.writeheader()
 
         for params in tqdm(ParameterGrid(params_list)):
             kf = KFold(n_splits=5, shuffle=True)
@@ -167,7 +176,6 @@ if __name__ == "__main__":
             val_accuracy = []
 
             for i, (train_index, val_index) in enumerate(kf.split(X)):
-                # print("- KFold " + str(i+1) + "/5")
                 X_train = X[train_index]
                 X_val = X[val_index]
                 y_train = y[train_index]
@@ -184,12 +192,25 @@ if __name__ == "__main__":
             result["train_acc"] = np.mean(train_accuracy)
             result["val_acc"] = np.mean(val_accuracy)
 
-            if best_val_acc < result["val_acc"]:
-                best_val_acc = result["val_acc"]
-                best_params = params
-
-            # print("- train accuracy = " + str(result["train_acc"]))
-            # print("- vali. accuracy = " + str(result["val_acc"]))
             writer.writerow(result)
 
-        print("best val. accuracy = " + best_val_acc + "\nunder " + str(best_params))
+    # PREDICTING
+
+    # params = {
+    #     "weight": 1,
+    #     "n_estimators": 50,
+    #     "max_depth": 10,
+    #     "learning_rate": 0.1,
+    #     "gamma": 0.1,
+    # }
+    #
+    # classifier = MXGBClassifier(params)
+    # classifier.fit(X, y)
+    #
+    # df_test = pd.read_csv("./data/test-full.csv")
+    # X_test, _ = preprocess(df_test, mode="test")
+    # ids = [int(id) for id in X_test[:, 0]]
+    #
+    # y_test = classifier.predict(X_test)
+    # df_result = pd.DataFrame(list(zip(ids, y_test)), columns=['Id', 'Cover_Type'])
+    # df_result.to_csv("./data/mxgb_pred.csv", index=False)
